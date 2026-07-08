@@ -91,9 +91,36 @@ flow (marks → separation-of-duties publish → public lookup).
 See `.env.example`. Key vars: `DATABASE_URL`, `REDIS_URL`, `JWT_ACCESS_SECRET`,
 `API_INTERNAL_URL` (used by the web proxy), and `SEED_SUPERADMIN_*`.
 
+## Modules
+
+The full PTSNSU-style back-office surface (from the route maps in
+`ptsnsuonline-*.md`) is implemented as default-deny verticals:
+
+| Module | Public | Admin (`/api/admin/...`) | Key actions (distinct permissions) |
+|---|---|---|---|
+| Results | `/results` lookup | `marks/*`, `results/*` | enter marks → submit → approve/publish (SoD) |
+| Admission | register applicant | `admission/applications` | verify · mark-deficiency · reject · merit generate |
+| Enrollment | — | `enrollment/forms` | verify · reject · allocate enrollment number |
+| Fees / RFT | — | `fees/*` | RFT issue · edit · print; transaction read |
+| Degree | — | `degree/applications` | deliver · export |
+| Grievance | `/grievance` register + track | `grievance` | assign · reply · close |
+| Notices | `/notices` board | `notices` | write · publish · hide |
+
+Each action is a separate permission in `packages/shared/src/rbac/permission-catalog.ts`
+(the single source of truth for both the API guards and the DB seed). A regression
+test enumerates the live router and asserts every admin route is 401 unauthenticated.
+
 ## Status
 
-Milestone 1 (foundation + results vertical) is implemented and tested. Remaining work
-and later milestones (admission, enrollment, fees, grievance, degree, notices,
-hardening, legacy migration) are tracked in
+Milestones 1–2 (foundation, results, admission, enrollment, fees, degree, grievance,
+notices) are implemented and tested (35 e2e tests). Remaining work (hardening,
+college/FC scoped portals, legacy data migration) is tracked in
 `claude-university-erp-rebuild-plan.md` and `concrete-execution-plan.md`.
+
+## Deployment (Render)
+
+`render.yaml` is a blueprint deploying the whole stack (Postgres 16, Key Value,
+API, web). Migrations + seed run in the API start command (pre-deploy hooks need a
+paid plan). The web service proxies `/api/*` to the API so the refresh cookie stays
+first-party. On Render, set the web env `API_INTERNAL_URL` to the API's URL (private
+DNS uses the service **name**, not the slug).
