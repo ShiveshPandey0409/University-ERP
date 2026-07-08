@@ -17,9 +17,15 @@ export const ADMIN_NAV: NavItem[] = [
   { label: "Academic Sessions", href: "/admin/master/academic-sessions", permission: "masterdata.session.manage" },
   { label: "Exam Sessions", href: "/admin/master/exam-sessions", permission: "masterdata.session.manage" },
   { label: "Students", href: "/admin/academic/students", permission: "academic.student.read" },
+  { label: "Admissions", href: "/admin/admission/applications", permission: "admission.application.read" },
+  { label: "Enrollment", href: "/admin/enrollment/forms", permission: "enrollment.form.read" },
   { label: "Exam Forms", href: "/admin/exam/forms", permission: "exam.form.read" },
   { label: "Marks Batches", href: "/admin/marks/batches", permission: "marks.batch.read" },
   { label: "Results", href: "/admin/results/publications", permission: "result.publication.read" },
+  { label: "Refunds (RFT)", href: "/admin/fees/rft", permission: "fees.transaction.read" },
+  { label: "Degrees", href: "/admin/degree/applications", permission: "degree.application.read" },
+  { label: "Grievances", href: "/admin/grievance", permission: "grievance.complaint.read" },
+  { label: "Notices", href: "/admin/notices", permission: "notice.item.read" },
   { label: "Users", href: "/admin/system/users", permission: "system.user.manage" },
 ];
 

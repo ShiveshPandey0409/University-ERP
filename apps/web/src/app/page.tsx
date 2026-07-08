@@ -12,6 +12,12 @@ export default function HomePage() {
             <Link href="/results">
               <Button variant="ghost" size="sm">Results</Button>
             </Link>
+            <Link href="/notices">
+              <Button variant="ghost" size="sm">Notices</Button>
+            </Link>
+            <Link href="/grievance">
+              <Button variant="ghost" size="sm">Grievance</Button>
+            </Link>
             <Link href="/login/admin">
               <Button variant="outline" size="sm">Admin Login</Button>
             </Link>
@@ -25,7 +31,7 @@ export default function HomePage() {
           Check published examination results, or sign in to the administration console.
         </p>
 
-        <div className="mt-8 grid grid-cols-1 gap-4 sm:grid-cols-2">
+        <div className="mt-8 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
           <Card>
             <CardHeader>
               <CardTitle>Examination Results</CardTitle>
@@ -34,6 +40,28 @@ export default function HomePage() {
             <CardContent>
               <Link href="/results">
                 <Button>Check Result</Button>
+              </Link>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardHeader>
+              <CardTitle>Notice Board</CardTitle>
+              <CardDescription>University announcements and exam notices.</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <Link href="/notices">
+                <Button variant="outline">View Notices</Button>
+              </Link>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardHeader>
+              <CardTitle>Grievance Portal</CardTitle>
+              <CardDescription>Register a complaint and track it by ticket.</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <Link href="/grievance">
+                <Button variant="outline">Open Grievance</Button>
               </Link>
             </CardContent>
           </Card>

@@ -15,6 +15,12 @@ import { AcademicModule } from "./modules/academic/academic.module.js";
 import { ExamModule } from "./modules/exam/exam.module.js";
 import { ResultsModule } from "./modules/results/results.module.js";
 import { PublicModule } from "./modules/public/public.module.js";
+import { GrievanceModule } from "./modules/grievance/grievance.module.js";
+import { NoticesModule } from "./modules/notices/notices.module.js";
+import { AdmissionModule } from "./modules/admission/admission.module.js";
+import { EnrollmentModule } from "./modules/enrollment/enrollment.module.js";
+import { FeesModule } from "./modules/fees/fees.module.js";
+import { DegreeModule } from "./modules/degree/degree.module.js";
 import { globalProviders } from "./bootstrap/global-providers.js";
 
 @Module({
@@ -39,6 +45,12 @@ import { globalProviders } from "./bootstrap/global-providers.js";
     ExamModule,
     ResultsModule,
     PublicModule,
+    GrievanceModule,
+    NoticesModule,
+    AdmissionModule,
+    EnrollmentModule,
+    FeesModule,
+    DegreeModule,
   ],
   providers: [...globalProviders],
 })

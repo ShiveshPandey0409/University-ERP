@@ -35,12 +35,29 @@ export interface FilterConfig {
   options?: StaticOption[];
 }
 
+export interface RowAction<T> {
+  label: string;
+  method?: "POST" | "PATCH";
+  /** Path relative to the API, e.g. (r) => `/admin/grievance/${r.id}/close`. */
+  path: (row: T) => string;
+  /** If set, prompt the operator for a single value sent as `{ [field]: value }`. */
+  prompt?: { field: string; label: string };
+  confirm?: string;
+  hidden?: (row: T) => boolean;
+}
+
 export interface ResourceConfig<T> {
   title: string;
   endpoint: string;
   columns: Column<T>[];
   fields: FieldConfig[];
   filters?: FilterConfig[];
+  /** Hide create/edit/delete — for action-driven modules (verify/assign/etc.). */
+  readOnly?: boolean;
+  /** Keep create/edit but hide delete — for modules without a DELETE endpoint. */
+  noDelete?: boolean;
+  /** Per-row action buttons hitting dedicated endpoints. */
+  rowActions?: RowAction<T>[];
 }
 
 interface OptionRow {
@@ -99,6 +116,27 @@ export function ResourceManager<T extends { id: string }>({ config }: { config: 
       toast.error(e instanceof ApiRequestError ? e.message : "Delete failed (may be referenced)"),
   });
 
+  const act = useMutation({
+    mutationFn: ({ path, method, body }: { path: string; method: "POST" | "PATCH"; body?: unknown }) =>
+      apiFetch(path, { method, body }),
+    onSuccess: () => {
+      toast.success("Done");
+      invalidate();
+    },
+    onError: (e) => toast.error(e instanceof ApiRequestError ? e.message : "Action failed"),
+  });
+
+  const runAction = (action: RowAction<T>, row: T) => {
+    if (action.confirm && !confirm(action.confirm)) return;
+    let body: unknown;
+    if (action.prompt) {
+      const value = window.prompt(action.prompt.label);
+      if (value === null || value === "") return;
+      body = { [action.prompt.field]: value };
+    }
+    act.mutate({ path: action.path(row), method: action.method ?? "POST", body });
+  };
+
   const openCreate = () => {
     setEditing(null);
     setForm(Object.fromEntries(config.fields.map((f) => [f.key, f.defaultValue ?? (f.type === "checkbox" ? false : "")])));
@@ -127,28 +165,44 @@ export function ResourceManager<T extends { id: string }>({ config }: { config: 
     save.mutate(payload);
   };
 
-  const columns: Column<T>[] = [
-    ...config.columns,
-    {
-      header: "",
-      cell: (row) => (
-        <div className="flex justify-end gap-2">
-          <Button variant="outline" size="sm" onClick={() => openEdit(row)}>
-            Edit
-          </Button>
-          <Button
-            variant="destructive"
-            size="sm"
-            onClick={() => {
-              if (confirm("Delete this record?")) del.mutate(row.id);
-            }}
-          >
-            Delete
-          </Button>
-        </div>
-      ),
-    },
-  ];
+  const hasRowUi = !config.readOnly || (config.rowActions?.length ?? 0) > 0;
+  const columns: Column<T>[] = hasRowUi
+    ? [
+        ...config.columns,
+        {
+          header: "",
+          cell: (row) => (
+            <div className="flex flex-wrap justify-end gap-2">
+              {config.rowActions
+                ?.filter((a) => !a.hidden?.(row))
+                .map((a) => (
+                  <Button key={a.label} variant="outline" size="sm" onClick={() => runAction(a, row)}>
+                    {a.label}
+                  </Button>
+                ))}
+              {!config.readOnly && (
+                <>
+                  <Button variant="outline" size="sm" onClick={() => openEdit(row)}>
+                    Edit
+                  </Button>
+                  {!config.noDelete && (
+                    <Button
+                      variant="destructive"
+                      size="sm"
+                      onClick={() => {
+                        if (confirm("Delete this record?")) del.mutate(row.id);
+                      }}
+                    >
+                      Delete
+                    </Button>
+                  )}
+                </>
+              )}
+            </div>
+          ),
+        },
+      ]
+    : config.columns;
 
   return (
     <div className="space-y-4">
@@ -156,7 +210,7 @@ export function ResourceManager<T extends { id: string }>({ config }: { config: 
         <h1 className="text-2xl font-semibold">
           {config.title} {data ? `(${data.total})` : ""}
         </h1>
-        <Button onClick={openCreate}>+ New</Button>
+        {!config.readOnly && <Button onClick={openCreate}>+ New</Button>}
       </div>
 
       <div className="flex flex-wrap items-center gap-3">

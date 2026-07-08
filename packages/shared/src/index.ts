@@ -12,3 +12,4 @@ export * from "./schemas/auth.js";
 export * from "./schemas/results.js";
 export * from "./schemas/master-data.js";
 export * from "./schemas/vertical-crud.js";
+export * from "./schemas/milestone2.js";

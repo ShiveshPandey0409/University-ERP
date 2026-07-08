@@ -1,0 +1,7 @@
+"use client";
+import { ResourceManager } from "@/components/ResourceManager";
+import { degreesConfig } from "@/lib/resources";
+
+export default function Page() {
+  return <ResourceManager config={degreesConfig} />;
+}

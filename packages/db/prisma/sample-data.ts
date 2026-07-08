@@ -220,4 +220,71 @@ export async function seedSampleData(prisma: PrismaClient): Promise<void> {
   });
 
   console.log("  ✓ sample results-vertical data (course, students, marks, published result)");
+
+  await seedMilestone2Sample(prisma, { academicSessionId: academicSession.id, courseId: course.id });
+}
+
+/** Dev/test sample data for admission → enrollment → fees → degree, grievance & notices. */
+async function seedMilestone2Sample(
+  prisma: PrismaClient,
+  ref: { academicSessionId: string; courseId: string },
+): Promise<void> {
+  // Notices have no natural unique key; seed once by matching the title.
+  const notice = await prisma.notice.findFirst({
+    where: { title: { startsWith: "Examination Form Deadline" } },
+  });
+  if (!notice) {
+    await prisma.notice.create({
+      data: {
+        title: "Examination Form Deadline — April 2026",
+        body: "Students must submit exam forms by 20 April 2026. Unverified forms will not receive admit cards.",
+        category: "Examination",
+        pinned: true,
+        isPublished: true,
+        publishedAt: new Date(),
+      },
+    });
+  }
+
+  const grievances = [
+    { ticketNo: "GRV-10000001", category: "result" as const, name: "Asha Verma", mobile: "9800000001", body: "Result not showing.", status: "open" as const },
+    { ticketNo: "GRV-10000002", category: "marksheet" as const, name: "Ravi Kumar", mobile: "9800000002", body: "Marksheet name spelling error.", status: "assigned" as const },
+  ];
+  for (const g of grievances) {
+    await prisma.grievance.upsert({ where: { ticketNo: g.ticketNo }, update: {}, create: g });
+  }
+
+  const applications = [
+    { applicationNo: "ADM-20000001", name: "Neha Singh", admissionType: "regular", mobile: "9700000001", status: "pending" as const },
+    { applicationNo: "ADM-20000002", name: "Imran Ali", admissionType: "regular", mobile: "9700000002", status: "verified" as const, meritScore: 88.5 },
+    { applicationNo: "ADM-20000003", name: "Priya Nair", admissionType: "private", mobile: "9700000003", status: "verified" as const, meritScore: 92.0 },
+  ];
+  for (const a of applications) {
+    await prisma.admissionApplication.upsert({
+      where: { applicationNo: a.applicationNo },
+      update: {},
+      create: { ...a, academicSessionId: ref.academicSessionId, courseId: ref.courseId },
+    });
+  }
+
+  const feeTxns = [
+    { orderNo: "ORD-30000001", enrollmentNo: "ENR2025001", studentName: "Test Student One", feesFor: "Exam Fee", amount: 1500, status: "paid" as const },
+    { orderNo: "ORD-30000002", enrollmentNo: "ENR2025002", studentName: "Test Student Two", feesFor: "Admission Fee", amount: 5000, status: "paid" as const },
+  ];
+  for (const t of feeTxns) {
+    await prisma.feeTransaction.upsert({ where: { orderNo: t.orderNo }, update: {}, create: t });
+  }
+  await prisma.rftRequest.upsert({
+    where: { rftNo: "RFT-40000001" },
+    update: {},
+    create: { rftNo: "RFT-40000001", enrollmentNo: "ENR2025001", studentName: "Test Student One", amount: 500, reason: "Excess fee", status: "issued" },
+  });
+
+  await prisma.degreeApplication.upsert({
+    where: { applicationNo: "DEG-50000001" },
+    update: {},
+    create: { applicationNo: "DEG-50000001", studentName: "Test Student One", enrollmentNo: "ENR2025001", courseId: ref.courseId, academicSessionId: ref.academicSessionId, convocationYear: 2026, status: "applied" },
+  });
+
+  console.log("  ✓ sample milestone-2 data (notices, grievances, admissions, fees, degree)");
 }
