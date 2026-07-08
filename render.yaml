@@ -1,0 +1,87 @@
+# Render Blueprint — full stack: Postgres + Redis (Key Value) + NestJS API + Next.js web.
+# Deploy: push this repo to GitHub, then Render Dashboard → New → Blueprint → select repo.
+#
+# Free-tier notes:
+#   - Web services spin down after ~15 min idle (first request after that takes ~1 min).
+#   - The free Postgres instance expires after 30 days unless upgraded.
+#   - Migrations + seed run in the API start command (pre-deploy hooks need a paid plan).
+
+databases:
+  - name: erp-db
+    plan: free
+    region: singapore
+    databaseName: erp
+    user: erp
+    postgresMajorVersion: "16"
+
+services:
+  - type: keyvalue
+    name: erp-redis
+    plan: free
+    region: singapore
+    ipAllowList: [] # internal connections only
+
+  - type: web
+    name: erp-api
+    runtime: node
+    plan: free
+    region: singapore
+    buildCommand: >-
+      corepack enable &&
+      pnpm install --frozen-lockfile --prod=false &&
+      pnpm --filter @erp/shared build &&
+      pnpm --filter @erp/db build &&
+      pnpm --filter @erp/api build
+    startCommand: >-
+      pnpm --filter @erp/db exec prisma migrate deploy &&
+      pnpm --filter @erp/db exec tsx prisma/seed.ts &&
+      node apps/api/dist/main.js
+    healthCheckPath: /api/health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: API_PORT
+        value: "10000"
+      - key: DATABASE_URL
+        fromDatabase:
+          name: erp-db
+          property: connectionString
+      - key: REDIS_URL
+        fromService:
+          type: keyvalue
+          name: erp-redis
+          property: connectionString
+      - key: JWT_ACCESS_SECRET
+        generateValue: true
+      - key: COOKIE_SECURE
+        value: "true"
+      - key: CORS_ORIGINS
+        value: https://erp-web.onrender.com
+      - key: SEED_SUPERADMIN_USERNAME
+        value: superadmin
+      - key: SEED_SUPERADMIN_EMAIL
+        value: superadmin@erp.local
+      - key: SEED_SUPERADMIN_PASSWORD
+        value: ChangeMe!2026
+
+  - type: web
+    name: erp-web
+    runtime: node
+    plan: free
+    region: singapore
+    buildCommand: >-
+      corepack enable &&
+      pnpm install --frozen-lockfile --prod=false &&
+      pnpm --filter @erp/shared build &&
+      pnpm --filter @erp/web build
+    startCommand: pnpm --filter @erp/web exec next start -p $PORT
+    envVars:
+      - key: NODE_ENV
+        value: production
+      # Next.js proxies /api/* to the API over Render's private network so the
+      # refresh cookie stays first-party (see apps/web/next.config.ts).
+      - key: API_INTERNAL_HOSTPORT
+        fromService:
+          type: web
+          name: erp-api
+          property: hostport

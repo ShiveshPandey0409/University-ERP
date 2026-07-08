@@ -1,0 +1,741 @@
+// University ERP — Prisma schema.
+// Milestone 1 slice: identity + RBAC + audit. Later stages extend this file
+// (master data, students, examination, marks/results) with new migrations.
+
+generator client {
+  provider        = "prisma-client-js"
+  previewFeatures = ["postgresqlExtensions"]
+}
+
+datasource db {
+  provider   = "postgresql"
+  url        = env("DATABASE_URL")
+  extensions = [pgcrypto, citext]
+}
+
+// ---------------------------------------------------------------------------
+// Enums
+// ---------------------------------------------------------------------------
+
+enum UserType {
+  admin
+  student
+  applicant
+  college
+}
+
+enum UserStatus {
+  active
+  disabled
+  locked
+  pending
+}
+
+enum ScopeType {
+  global
+  college
+  department
+  session
+}
+
+enum AuditOutcome {
+  success
+  failure
+}
+
+enum ActorType {
+  user
+  system
+  anonymous
+}
+
+// ---------------------------------------------------------------------------
+// Identity
+// ---------------------------------------------------------------------------
+
+model User {
+  id               String     @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userType         UserType
+  username         String     @db.Citext
+  email            String?    @db.Citext
+  passwordHash     String
+  displayName      String
+  status           UserStatus @default(pending)
+  mfaEnabled       Boolean    @default(false)
+  mfaSecret        String?
+  failedLoginCount Int        @default(0)
+  lockedUntil      DateTime?  @db.Timestamptz(6)
+  lastLoginAt      DateTime?  @db.Timestamptz(6)
+  passwordChangedAt DateTime? @db.Timestamptz(6)
+  // Bumped on any role/permission change → invalidates cached perms and the
+  // authority of still-valid access tokens (checked as `rv` claim).
+  roleVersion      Int        @default(0)
+
+  createdAt DateTime  @default(now()) @db.Timestamptz(6)
+  updatedAt DateTime  @updatedAt @db.Timestamptz(6)
+  createdBy String?   @db.Uuid
+  updatedBy String?   @db.Uuid
+  deletedAt DateTime? @db.Timestamptz(6)
+
+  userRoles     UserRole[]
+  userScopes    UserScope[]
+  sessions      Session[]
+  refreshTokens RefreshToken[]
+
+  @@unique([userType, username])
+  @@unique([userType, email])
+  @@index([status])
+  @@map("users")
+}
+
+model Role {
+  id          String  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  key         String  @unique
+  name        String
+  description String?
+  isSystem    Boolean @default(false)
+
+  createdAt DateTime @default(now()) @db.Timestamptz(6)
+  updatedAt DateTime @updatedAt @db.Timestamptz(6)
+
+  rolePermissions RolePermission[]
+  userRoles       UserRole[]
+
+  @@map("roles")
+}
+
+model Permission {
+  id          String  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  key         String  @unique
+  module      String
+  resource    String
+  action      String
+  description String?
+
+  rolePermissions RolePermission[]
+
+  @@index([module])
+  @@map("permissions")
+}
+
+model RolePermission {
+  roleId       String   @db.Uuid
+  permissionId String   @db.Uuid
+  assignedAt   DateTime @default(now()) @db.Timestamptz(6)
+  assignedBy   String?  @db.Uuid
+
+  role       Role       @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  permission Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
+
+  @@id([roleId, permissionId])
+  @@map("role_permissions")
+}
+
+model UserRole {
+  userId     String   @db.Uuid
+  roleId     String   @db.Uuid
+  assignedAt DateTime @default(now()) @db.Timestamptz(6)
+  assignedBy String?  @db.Uuid
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role Role @relation(fields: [roleId], references: [id], onDelete: Cascade)
+
+  @@id([userId, roleId])
+  @@map("user_roles")
+}
+
+model UserScope {
+  id           String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId       String    @db.Uuid
+  scopeType    ScopeType
+  collegeId    String?   @db.Uuid
+  departmentId String?   @db.Uuid
+  sessionId    String?   @db.Uuid
+
+  createdAt DateTime @default(now()) @db.Timestamptz(6)
+  createdBy String?  @db.Uuid
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, scopeType, collegeId, departmentId, sessionId])
+  @@index([userId])
+  @@map("user_scopes")
+}
+
+model Session {
+  id         String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId     String    @db.Uuid
+  createdAt  DateTime  @default(now()) @db.Timestamptz(6)
+  lastSeenAt DateTime  @default(now()) @db.Timestamptz(6)
+  expiresAt  DateTime  @db.Timestamptz(6)
+  revokedAt  DateTime? @db.Timestamptz(6)
+  ip         String?
+  userAgent  String?
+
+  user          User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  refreshTokens RefreshToken[]
+
+  @@index([userId])
+  @@map("sessions")
+}
+
+model RefreshToken {
+  id              String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  sessionId       String    @db.Uuid
+  userId          String    @db.Uuid
+  tokenHash       String    @unique
+  familyId        String    @db.Uuid
+  prevTokenId     String?   @db.Uuid
+  issuedAt        DateTime  @default(now()) @db.Timestamptz(6)
+  expiresAt       DateTime  @db.Timestamptz(6)
+  consumedAt      DateTime? @db.Timestamptz(6)
+  revokedAt       DateTime? @db.Timestamptz(6)
+  reuseDetectedAt DateTime? @db.Timestamptz(6)
+  ip              String?
+  userAgent       String?
+
+  session Session @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([familyId])
+  @@index([userId])
+  @@map("refresh_tokens")
+}
+
+model LoginAttempt {
+  id                String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  usernameAttempted String
+  userId            String?   @db.Uuid
+  userType          UserType?
+  ip                String
+  userAgent         String?
+  success           Boolean
+  failureReason     String?
+  createdAt         DateTime  @default(now()) @db.Timestamptz(6)
+
+  @@index([usernameAttempted, createdAt])
+  @@index([ip, createdAt])
+  @@map("login_attempts")
+}
+
+model AuditLog {
+  id          String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  actorUserId String?      @db.Uuid
+  actorType   ActorType    @default(user)
+  action      String
+  entityType  String
+  entityId    String?
+  before      Json?
+  after       Json?
+  ip          String?
+  userAgent   String?
+  requestId   String?
+  outcome     AuditOutcome @default(success)
+  createdAt   DateTime     @default(now()) @db.Timestamptz(6)
+
+  @@index([entityType, entityId])
+  @@index([actorUserId, createdAt])
+  @@index([action, createdAt])
+  @@map("audit_logs")
+}
+
+// ===========================================================================
+// Results vertical: master data → students → examination → marks/results
+// ===========================================================================
+
+enum ProgramLevel {
+  ug
+  pg
+  phd
+  diploma
+}
+
+enum SubjectType {
+  theory
+  practical
+  cce
+  project
+}
+
+enum SchemeStatus {
+  draft
+  approved
+  removed
+}
+
+enum Gender {
+  male
+  female
+  other
+}
+
+enum StudentStatus {
+  active
+  cancelled
+  passed_out
+  suspended
+}
+
+enum ExamStudentType {
+  regular
+  private
+  ex_regular
+  atkt
+  supplementary
+}
+
+enum ExamFormStatus {
+  draft
+  applied
+  verified
+  rejected
+}
+
+enum PaymentStatus {
+  pending
+  paid
+  failed
+  refunded
+}
+
+enum MarksBatchStatus {
+  open
+  submitted
+  locked
+}
+
+enum MarksEntryStatus {
+  draft
+  entered
+  corrected
+  withheld
+}
+
+enum CorrectionStatus {
+  pending
+  approved
+  rejected
+}
+
+enum PublicationStatus {
+  draft
+  pending_approval
+  published
+}
+
+enum RvRtType {
+  revaluation
+  retotal
+}
+
+// --- Master data ---
+
+model AcademicSession {
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name      String
+  code      String   @unique
+  isCurrent Boolean  @default(false)
+  createdAt DateTime @default(now()) @db.Timestamptz(6)
+  updatedAt DateTime @updatedAt @db.Timestamptz(6)
+  createdBy String?  @db.Uuid
+  updatedBy String?  @db.Uuid
+
+  examSessions ExamSession[]
+  schemes      Scheme[]
+  students     Student[]
+
+  @@map("academic_sessions")
+}
+
+model ExamSession {
+  id                String          @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name              String
+  code              String          @unique
+  academicSessionId String          @db.Uuid
+  isOpen            Boolean         @default(false)
+  createdAt         DateTime        @default(now()) @db.Timestamptz(6)
+  updatedAt         DateTime        @updatedAt @db.Timestamptz(6)
+  createdBy         String?         @db.Uuid
+  updatedBy         String?         @db.Uuid
+
+  academicSession AcademicSession @relation(fields: [academicSessionId], references: [id])
+  examForms       ExamForm[]
+  marksBatches    MarksBatch[]
+  publications    ResultPublication[]
+
+  @@map("exam_sessions")
+}
+
+model Faculty {
+  id          String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name        String
+  code        String       @unique
+  createdAt   DateTime     @default(now()) @db.Timestamptz(6)
+  updatedAt   DateTime     @updatedAt @db.Timestamptz(6)
+  colleges    College[]
+  departments Department[]
+  programs    Program[]
+
+  @@map("faculties")
+}
+
+model College {
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name      String
+  code      String   @unique
+  facultyId String?  @db.Uuid
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now()) @db.Timestamptz(6)
+  updatedAt DateTime @updatedAt @db.Timestamptz(6)
+  createdBy String?  @db.Uuid
+  updatedBy String?  @db.Uuid
+
+  faculty   Faculty?   @relation(fields: [facultyId], references: [id])
+  students  Student[]
+  examForms ExamForm[]
+
+  @@map("colleges")
+}
+
+model Department {
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name      String
+  code      String   @unique
+  facultyId String?  @db.Uuid
+  createdAt DateTime @default(now()) @db.Timestamptz(6)
+  updatedAt DateTime @updatedAt @db.Timestamptz(6)
+
+  faculty  Faculty?  @relation(fields: [facultyId], references: [id])
+  programs Program[]
+
+  @@map("departments")
+}
+
+model Program {
+  id           String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name         String
+  code         String       @unique
+  level        ProgramLevel
+  departmentId String?      @db.Uuid
+  facultyId    String?      @db.Uuid
+  createdAt    DateTime     @default(now()) @db.Timestamptz(6)
+  updatedAt    DateTime     @updatedAt @db.Timestamptz(6)
+
+  department Department? @relation(fields: [departmentId], references: [id])
+  faculty    Faculty?    @relation(fields: [facultyId], references: [id])
+  courses    Course[]
+
+  @@map("programs")
+}
+
+model Course {
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name           String
+  code           String   @unique
+  programId      String   @db.Uuid
+  durationYears  Int      @default(3)
+  semesterSystem Boolean  @default(true)
+  totalSemesters Int      @default(6)
+  createdAt      DateTime @default(now()) @db.Timestamptz(6)
+  updatedAt      DateTime @updatedAt @db.Timestamptz(6)
+  createdBy      String?  @db.Uuid
+  updatedBy      String?  @db.Uuid
+
+  program        Program          @relation(fields: [programId], references: [id])
+  courseSubjects CourseSubject[]
+  schemes        Scheme[]
+  students       Student[]
+  examForms      ExamForm[]
+  marksBatches   MarksBatch[]
+  publications   ResultPublication[]
+
+  @@index([programId])
+  @@map("courses")
+}
+
+model Subject {
+  id        String      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name      String
+  code      String      @unique
+  type      SubjectType @default(theory)
+  credits   Int         @default(4)
+  maxMarks  Int         @default(100)
+  createdAt DateTime    @default(now()) @db.Timestamptz(6)
+  updatedAt DateTime    @updatedAt @db.Timestamptz(6)
+
+  courseSubjects CourseSubject[]
+  marksBatches   MarksBatch[]
+
+  @@map("subjects")
+}
+
+model CourseSubject {
+  id         String  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  courseId   String  @db.Uuid
+  subjectId  String  @db.Uuid
+  semester   Int
+  isElective Boolean @default(false)
+
+  course  Course  @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  subject Subject @relation(fields: [subjectId], references: [id], onDelete: Cascade)
+
+  @@unique([courseId, subjectId, semester])
+  @@index([courseId, semester])
+  @@map("course_subjects")
+}
+
+model Scheme {
+  id                String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name              String
+  courseId          String       @db.Uuid
+  academicSessionId String       @db.Uuid
+  status            SchemeStatus @default(draft)
+  approvedBy        String?      @db.Uuid
+  approvedAt        DateTime?    @db.Timestamptz(6)
+  createdAt         DateTime     @default(now()) @db.Timestamptz(6)
+  updatedAt         DateTime     @updatedAt @db.Timestamptz(6)
+
+  course          Course          @relation(fields: [courseId], references: [id])
+  academicSession AcademicSession @relation(fields: [academicSessionId], references: [id])
+
+  @@unique([courseId, academicSessionId])
+  @@map("schemes")
+}
+
+// --- Students ---
+
+model Student {
+  id                String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  enrollmentNumber  String        @unique
+  userId            String?       @db.Uuid
+  name              String
+  dob               DateTime?     @db.Date
+  gender            Gender?
+  category          String?
+  collegeId         String        @db.Uuid
+  programId         String        @db.Uuid
+  courseId          String        @db.Uuid
+  academicSessionId String        @db.Uuid
+  currentSemester   Int           @default(1)
+  status            StudentStatus @default(active)
+  createdAt         DateTime      @default(now()) @db.Timestamptz(6)
+  updatedAt         DateTime      @updatedAt @db.Timestamptz(6)
+  createdBy         String?       @db.Uuid
+  updatedBy         String?       @db.Uuid
+  deletedAt         DateTime?     @db.Timestamptz(6)
+
+  college         College         @relation(fields: [collegeId], references: [id])
+  course          Course          @relation(fields: [courseId], references: [id])
+  academicSession AcademicSession @relation(fields: [academicSessionId], references: [id])
+  documents       StudentDocument[]
+  examForms       ExamForm[]
+  marksEntries    MarksEntry[]
+
+  @@index([collegeId])
+  @@index([courseId])
+  @@index([academicSessionId])
+  @@map("students")
+}
+
+model StudentDocument {
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  studentId String   @db.Uuid
+  type      String
+  fileId    String?  @db.Uuid
+  createdAt DateTime @default(now()) @db.Timestamptz(6)
+
+  student Student @relation(fields: [studentId], references: [id], onDelete: Cascade)
+
+  @@index([studentId])
+  @@map("student_documents")
+}
+
+// --- Examination ---
+
+model ExamForm {
+  id            String          @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  studentId     String          @db.Uuid
+  examSessionId String          @db.Uuid
+  courseId      String          @db.Uuid
+  collegeId     String          @db.Uuid
+  semester      Int
+  rollNumber    String?
+  studentType   ExamStudentType @default(regular)
+  status        ExamFormStatus  @default(draft)
+  paymentStatus PaymentStatus   @default(pending)
+  verifiedBy    String?         @db.Uuid
+  verifiedAt    DateTime?       @db.Timestamptz(6)
+  createdAt     DateTime        @default(now()) @db.Timestamptz(6)
+  updatedAt     DateTime        @updatedAt @db.Timestamptz(6)
+
+  student       Student                 @relation(fields: [studentId], references: [id])
+  examSession   ExamSession             @relation(fields: [examSessionId], references: [id])
+  course        Course                  @relation(fields: [courseId], references: [id])
+  college       College                 @relation(fields: [collegeId], references: [id])
+  subjects      ExamFormSubject[]
+  statusHistory ExamFormStatusHistory[]
+
+  @@unique([examSessionId, rollNumber])
+  @@unique([studentId, examSessionId])
+  @@index([collegeId])
+  @@index([examSessionId, status])
+  @@map("exam_forms")
+}
+
+model ExamFormSubject {
+  id         String  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  examFormId String  @db.Uuid
+  subjectId  String  @db.Uuid
+
+  examForm ExamForm @relation(fields: [examFormId], references: [id], onDelete: Cascade)
+
+  @@unique([examFormId, subjectId])
+  @@map("exam_form_subjects")
+}
+
+model ExamFormStatusHistory {
+  id          String          @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  examFormId  String          @db.Uuid
+  fromStatus  ExamFormStatus?
+  toStatus    ExamFormStatus
+  actorUserId String?         @db.Uuid
+  note        String?
+  createdAt   DateTime        @default(now()) @db.Timestamptz(6)
+
+  examForm ExamForm @relation(fields: [examFormId], references: [id], onDelete: Cascade)
+
+  @@index([examFormId])
+  @@map("exam_form_status_history")
+}
+
+// --- Marks / results ---
+
+model MarksBatch {
+  id            String           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  examSessionId String           @db.Uuid
+  courseId      String           @db.Uuid
+  subjectId     String           @db.Uuid
+  collegeId     String?          @db.Uuid
+  semester      Int
+  status        MarksBatchStatus @default(open)
+  createdBy     String?          @db.Uuid
+  createdAt     DateTime         @default(now()) @db.Timestamptz(6)
+  updatedAt     DateTime         @updatedAt @db.Timestamptz(6)
+
+  examSession ExamSession   @relation(fields: [examSessionId], references: [id])
+  course      Course        @relation(fields: [courseId], references: [id])
+  subject     Subject       @relation(fields: [subjectId], references: [id])
+  entries     MarksEntry[]
+  imports     MarksImport[]
+
+  @@unique([examSessionId, courseId, subjectId, semester])
+  @@index([collegeId])
+  @@map("marks_batches")
+}
+
+model MarksEntry {
+  id            String           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  batchId       String           @db.Uuid
+  studentId     String           @db.Uuid
+  cceMarks      Decimal?         @db.Decimal(6, 2)
+  theoryMarks   Decimal?         @db.Decimal(6, 2)
+  practicalMarks Decimal?        @db.Decimal(6, 2)
+  projectMarks  Decimal?         @db.Decimal(6, 2)
+  totalMarks    Decimal?         @db.Decimal(6, 2)
+  maxMarks      Decimal          @default(100) @db.Decimal(6, 2)
+  grade         String?
+  status        MarksEntryStatus @default(draft)
+  createdBy     String?          @db.Uuid
+  createdAt     DateTime         @default(now()) @db.Timestamptz(6)
+  updatedAt     DateTime         @updatedAt @db.Timestamptz(6)
+
+  batch       MarksBatch       @relation(fields: [batchId], references: [id], onDelete: Cascade)
+  student     Student          @relation(fields: [studentId], references: [id])
+  corrections MarksCorrection[]
+
+  @@unique([batchId, studentId])
+  @@index([studentId])
+  @@map("marks_entries")
+}
+
+model MarksImport {
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  batchId   String   @db.Uuid
+  status    String   @default("validated")
+  totalRows Int      @default(0)
+  validRows Int      @default(0)
+  errorRows Int      @default(0)
+  errors    Json?
+  createdBy String?  @db.Uuid
+  createdAt DateTime @default(now()) @db.Timestamptz(6)
+
+  batch MarksBatch @relation(fields: [batchId], references: [id], onDelete: Cascade)
+
+  @@index([batchId])
+  @@map("marks_imports")
+}
+
+model MarksCorrection {
+  id           String           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  marksEntryId String           @db.Uuid
+  oldValues    Json
+  newValues    Json
+  reason       String
+  status       CorrectionStatus @default(pending)
+  requestedBy  String?          @db.Uuid
+  approvedBy   String?          @db.Uuid
+  approvedAt   DateTime?        @db.Timestamptz(6)
+  createdAt    DateTime         @default(now()) @db.Timestamptz(6)
+
+  marksEntry MarksEntry @relation(fields: [marksEntryId], references: [id], onDelete: Cascade)
+
+  @@index([marksEntryId])
+  @@map("marks_corrections")
+}
+
+model WithheldResult {
+  id            String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  studentId     String    @db.Uuid
+  examSessionId String    @db.Uuid
+  reason        String
+  clearedAt     DateTime? @db.Timestamptz(6)
+  clearedBy     String?   @db.Uuid
+  createdAt     DateTime  @default(now()) @db.Timestamptz(6)
+
+  @@index([studentId])
+  @@map("withheld_results")
+}
+
+model ResultPublication {
+  id            String            @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  examSessionId String            @db.Uuid
+  courseId      String            @db.Uuid
+  semester      Int
+  status        PublicationStatus @default(draft)
+  resultType    String            @default("regular")
+  submittedBy   String?           @db.Uuid
+  approvedBy    String?           @db.Uuid
+  publishedAt   DateTime?         @db.Timestamptz(6)
+  createdAt     DateTime          @default(now()) @db.Timestamptz(6)
+  updatedAt     DateTime          @updatedAt @db.Timestamptz(6)
+
+  examSession ExamSession @relation(fields: [examSessionId], references: [id])
+  course      Course      @relation(fields: [courseId], references: [id])
+
+  @@unique([examSessionId, courseId, semester, resultType])
+  @@index([status])
+  @@map("result_publications")
+}
+
+model RvRtRequest {
+  id            String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  studentId     String    @db.Uuid
+  examSessionId String    @db.Uuid
+  subjectId     String    @db.Uuid
+  type          RvRtType
+  status        String    @default("requested")
+  createdAt     DateTime  @default(now()) @db.Timestamptz(6)
+
+  @@index([studentId])
+  @@map("rvrt_requests")
+}
