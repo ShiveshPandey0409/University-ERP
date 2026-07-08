@@ -62,7 +62,7 @@ services:
       - key: SEED_SUPERADMIN_EMAIL
         value: superadmin@erp.local
       - key: SEED_SUPERADMIN_PASSWORD
-        value: ChangeMe!2026
+        sync: false # set in the Render dashboard — never commit real passwords
 
   - type: web
     name: erp-web
