@@ -53,4 +53,9 @@ if [[ -n "${PTSNSU_BOOTSTRAP_URL:-}" && ! -f /var/opt/mssql/.ptsnsu-import-compl
   echo "PTSNSU restore: native database restore complete"
 fi
 
+if [[ -f /var/opt/mssql/.ptsnsu-import-complete ]]; then
+  rm -rf -- /var/opt/mssql/ptsnsu-import /var/opt/mssql/ptsnsu-restore
+  echo "PTSNSU restore: transfer artifacts removed"
+fi
+
 wait "$sqlserver_pid"
