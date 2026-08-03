@@ -3,7 +3,7 @@ services:
     name: ptsnsu-erp-db
     runtime: image
     region: singapore
-    plan: standard
+    plan: pro
     image:
       url: mcr.microsoft.com/mssql/server:2022-latest
     envVars:
