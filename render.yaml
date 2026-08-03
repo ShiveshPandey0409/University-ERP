@@ -1,87 +1,63 @@
-# Render Blueprint — full stack: Postgres + Redis (Key Value) + NestJS API + Next.js web.
-# Deploy: push this repo to GitHub, then Render Dashboard → New → Blueprint → select repo.
-#
-# Free-tier notes:
-#   - Web services spin down after ~15 min idle (first request after that takes ~1 min).
-#   - The free Postgres instance expires after 30 days unless upgraded.
-#   - Migrations + seed run in the API start command (pre-deploy hooks need a paid plan).
-
-databases:
-  - name: erp-db
-    plan: free
-    region: singapore
-    databaseName: erp
-    user: erp
-    postgresMajorVersion: "16"
-
 services:
-  - type: keyvalue
-    name: erp-redis
-    plan: free
+  - type: pserv
+    name: ptsnsu-erp-db
+    runtime: image
     region: singapore
-    ipAllowList: [] # internal connections only
+    plan: standard
+    image:
+      url: mcr.microsoft.com/mssql/server:2022-latest
+    envVars:
+      - key: ACCEPT_EULA
+        value: "Y"
+      - key: MSSQL_PID
+        value: Express
+      - key: MSSQL_SA_PASSWORD
+        sync: false
+    disk:
+      name: ptsnsu-erp-db-data
+      mountPath: /var/opt/mssql
+      sizeGB: 10
 
   - type: web
-    name: erp-api
-    runtime: node
-    plan: free
+    name: ptsnsu-erp-v2
+    runtime: docker
     region: singapore
-    buildCommand: >-
-      corepack enable &&
-      pnpm install --frozen-lockfile --prod=false &&
-      pnpm --filter @erp/shared build &&
-      pnpm --filter @erp/db build &&
-      pnpm --filter @erp/api build
-    startCommand: >-
-      pnpm --filter @erp/db exec prisma migrate deploy &&
-      pnpm --filter @erp/db exec tsx prisma/seed.ts &&
-      node apps/api/dist/main.js
-    healthCheckPath: /api/health
+    plan: free
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    healthCheckPath: /health
+    autoDeployTrigger: commit
     envVars:
-      - key: NODE_ENV
-        value: production
-      - key: API_PORT
-        value: "10000"
-      - key: DATABASE_URL
-        fromDatabase:
-          name: erp-db
-          property: connectionString
-      - key: REDIS_URL
+      - key: DB_HOST
         fromService:
-          type: keyvalue
-          name: erp-redis
-          property: connectionString
-      - key: JWT_ACCESS_SECRET
-        generateValue: true
-      - key: COOKIE_SECURE
-        value: "true"
+          type: pserv
+          name: ptsnsu-erp-db
+          property: host
+      - key: DB_PORT
+        value: "1433"
+      - key: DB_NAME
+        value: PSNSUniversityOnline
+      - key: DB_USER
+        value: sa
+      - key: DB_PASSWORD
+        sync: false
+      - key: DB_DRIVER
+        value: ODBC Driver 18 for SQL Server
+      - key: ENVIRONMENT
+        value: production
       - key: CORS_ORIGINS
-        value: https://erp-web.onrender.com
-      - key: SEED_SUPERADMIN_USERNAME
-        value: superadmin
-      - key: SEED_SUPERADMIN_EMAIL
-        value: superadmin@erp.local
-      - key: SEED_SUPERADMIN_PASSWORD
-        sync: false # set in the Render dashboard — never commit real passwords
-
-  - type: web
-    name: erp-web
-    runtime: node
-    plan: free
-    region: singapore
-    buildCommand: >-
-      corepack enable &&
-      pnpm install --frozen-lockfile --prod=false &&
-      pnpm --filter @erp/shared build &&
-      pnpm --filter @erp/web build
-    startCommand: pnpm --filter @erp/web exec next start -p $PORT
-    envVars:
-      - key: NODE_ENV
-        value: production
-      # Next.js proxies /api/* to the API over Render's private network so the
-      # refresh cookie stays first-party (see apps/web/next.config.ts).
-      - key: API_INTERNAL_HOSTPORT
-        fromService:
-          type: web
-          name: erp-api
-          property: hostport
+        value: '[]'
+      - key: JWT_SECRET
+        generateValue: true
+      - key: SABPAISA_CLIENT_CODE
+        sync: false
+      - key: SABPAISA_TRANS_USER
+        sync: false
+      - key: SABPAISA_TRANS_PASS
+        sync: false
+      - key: SABPAISA_AUTH_KEY
+        sync: false
+      - key: SABPAISA_AUTH_IV
+        sync: false
+      - key: SABPAISA_CALLBACK_URL
+        value: https://ptsnsu-erp-v2.onrender.com/payments/callback

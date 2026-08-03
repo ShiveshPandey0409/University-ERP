@@ -1,0 +1,20 @@
+# PTSNSU ERP v2 backend (FastAPI + SQLAlchemy over existing SQL Server)
+fastapi==0.115.6
+uvicorn[standard]==0.34.0
+sqlalchemy==2.0.36
+pyodbc==5.2.0
+pydantic==2.10.4
+pydantic-settings==2.7.1
+python-dotenv==1.0.1
+passlib==1.7.4                  # password hashing (bcrypt-on-login migration)
+bcrypt==4.0.1                   # pin: passlib 1.7.4 is incompatible with bcrypt>=4.1
+python-jose[cryptography]==3.3.0 # JWT
+python-multipart==0.0.20        # file uploads (photo/sign, grievance attachments)
+pycryptodome==3.21.0            # AES compat with legacy Encrypt/Decrypt + SabPaisa
+openpyxl==3.1.5                # Excel import/export (replaces ClosedXML)
+reportlab==4.2.5               # PDF marksheet generation
+# weasyprint — added in Phase 5 (needs native cairo/pango libs); not required yet
+
+# dev/test
+pytest==8.3.4
+httpx==0.28.1
