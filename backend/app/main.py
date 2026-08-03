@@ -45,7 +45,7 @@ def create_app() -> FastAPI:
 
     from app.routers import (
         academics, admin, admission, auth, emarks, exam, grievance, menu, misc,
-        payments, results, student, deployment,
+        payments, results, student,
     )
 
     app.include_router(auth.router)
@@ -62,7 +62,6 @@ def create_app() -> FastAPI:
     app.include_router(misc.degree)
     app.include_router(misc.fees)
     app.include_router(admission.router)
-    app.include_router(deployment.router)
 
     # In production the React build is served by the same process/origin as the
     # API. Keep this optional so Vite remains the development frontend.
