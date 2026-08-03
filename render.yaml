@@ -1,11 +1,11 @@
 services:
   - type: pserv
     name: ptsnsu-erp-db
-    runtime: image
+    runtime: docker
     region: singapore
     plan: pro
-    image:
-      url: mcr.microsoft.com/mssql/server:2022-latest
+    dockerfilePath: ./infra/mssql/Dockerfile
+    dockerContext: .
     envVars:
       - key: ACCEPT_EULA
         value: "Y"
