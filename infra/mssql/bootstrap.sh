@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-/opt/mssql/bin/launch_sqlservr.sh &
+/opt/mssql/bin/launch_sqlservr.sh /opt/mssql/bin/sqlservr &
 sqlserver_pid=$!
 
 terminate_sqlserver() {
