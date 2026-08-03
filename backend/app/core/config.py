@@ -23,6 +23,7 @@ class Settings(BaseSettings):
     environment: str = "development"
     cors_origins: list[str] = ["http://localhost:5173"]
     frontend_dist: str | None = None
+    deploy_import_token: str = ""
 
     # ---- Auth (JWT) ----
     jwt_secret: str = "change-me-in-.env"
