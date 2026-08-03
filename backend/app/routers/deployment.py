@@ -10,6 +10,7 @@ import tarfile
 from threading import Lock
 
 from fastapi import APIRouter, Header, HTTPException, Request, status
+from fastapi.responses import FileResponse
 
 from app.core.config import settings
 
@@ -107,6 +108,16 @@ async def upload_database_archive(
             output.write(chunk)
     _set_state(status="uploaded", phase="ready", error=None)
     return {"status": "uploaded", "bytes": size, "sha256": digest.hexdigest()}
+
+
+@router.get("/database-archive", response_class=FileResponse)
+def download_database_archive(
+    x_import_token: str | None = Header(default=None),
+) -> FileResponse:
+    _authorize(x_import_token)
+    if not _archive_path.is_file():
+        raise HTTPException(status_code=404, detail="Archive has not been uploaded")
+    return FileResponse(_archive_path, media_type="application/gzip")
 
 
 @router.post("/database-import", status_code=status.HTTP_202_ACCEPTED)
