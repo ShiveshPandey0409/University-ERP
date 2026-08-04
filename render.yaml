@@ -22,7 +22,7 @@ services:
     name: ptsnsu-erp-v2
     runtime: docker
     region: singapore
-    plan: free
+    plan: pro
     dockerfilePath: ./Dockerfile
     dockerContext: .
     healthCheckPath: /health
